@@ -3,6 +3,7 @@ package main
 import (
 	"log"
 	"net/http"
+	"os"
 
 	"card-to-iban/internal/handler"
 	"card-to-iban/internal/repository"
@@ -10,7 +11,13 @@ import (
 )
 
 func main() {
-	zarinClient := zarinhub.NewService("fake_api_key", "https://hub-zarin.com")
+	// خواندن توکن از متغیر محیطی
+	token := os.Getenv("ZARINHUB_TOKEN")
+	if token == "" {
+		log.Println("Warning: ZARINHUB_TOKEN is not set")
+	}
+
+	zarinClient := zarinhub.NewService(token)
 	repo := repository.NewMemoryRepository()
 	cardHandler := handler.NewCardHandler(zarinClient, repo)
 

@@ -3,12 +3,31 @@ package service
 import (
 	"errors"
 	"strings"
+	"unicode"
 )
 
 var ErrInvalidCard = errors.New("invalid card number")
 
+// NormalizeCardNumber تبدیل ارقام فارسی/عربی به انگلیسی و حذف فاصله
+func NormalizeCardNumber(input string) string {
+	var builder strings.Builder
+	for _, r := range input {
+		switch {
+		case unicode.IsDigit(r):
+			if r >= '۰' && r <= '۹' {
+				builder.WriteRune(r - '۰' + '0')
+			} else if r >= '٠' && r <= '٩' {
+				builder.WriteRune(r - '٠' + '0')
+			} else {
+				builder.WriteRune(r)
+			}
+		}
+	}
+	return builder.String()
+}
+
 func ValidateCard(card string) error {
-	card = strings.TrimSpace(card)
+	card = NormalizeCardNumber(card)
 
 	if card == "" {
 		return ErrInvalidCard
@@ -53,6 +72,7 @@ func luhnValid(card string) bool {
 }
 
 func MaskCardNumber(card string) string {
+	card = NormalizeCardNumber(card)
 	if len(card) != 16 {
 		return card
 	}
