@@ -20,7 +20,7 @@ type Client struct {
 	password   string
 	httpClient *http.Client
 
-	mu           sync.Mutex
+	mu           sync.RWMutex
 	accessToken  string
 	refreshToken string
 	expiresAt    time.Time
@@ -75,9 +75,18 @@ func NewService(username, password string) *Client {
 }
 
 func (c *Client) ensureToken(ctx context.Context) error {
+	// استفاده از Read Lock برای بررسی سریع اعتبار توکن بدون مسدودسازی سایر درخواست‌ها
+	c.mu.RLock()
+	if c.accessToken != "" && time.Now().Before(c.expiresAt.Add(-1*time.Minute)) {
+		c.mu.RUnlock()
+		return nil
+	}
+	c.mu.RUnlock()
+
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
+	// Double-check پس از دریافت Write Lock
 	if c.accessToken != "" && time.Now().Before(c.expiresAt.Add(-1*time.Minute)) {
 		return nil
 	}
@@ -148,8 +157,6 @@ func (c *Client) callAuth(ctx context.Context, body getTokenRequest) (*getTokenR
 	return &res, nil
 }
 
-// classifyTransportError خطاهای سطح شبکه (قبل از دریافت هرگونه پاسخ HTTP) را
-// به Timeout یا Unavailable تفکیک می‌کند.
 func classifyTransportError(err error) error {
 	if errors.Is(err, context.DeadlineExceeded) {
 		return &Error{Category: CategoryTimeout, Message: err.Error()}
@@ -161,9 +168,6 @@ func classifyTransportError(err error) error {
 	return &Error{Category: CategoryUnavailable, Message: err.Error()}
 }
 
-// FetchIban شماره کارت را به زرین‌هاب می‌فرستد.
-// httpStatus و rawBody در صورت دریافت پاسخ برگردانده می‌شوند تا در Audit Log ثبت شوند.
-// خطای برگشتی همیشه از نوع *Error است تا Handler بتواند دسته‌بندی آن را بخواند.
 func (c *Client) FetchIban(ctx context.Context, cardNumber string) (iban string, httpStatus int, rawBody string, err error) {
 	if tokenErr := c.ensureToken(ctx); tokenErr != nil {
 		return "", 0, "", tokenErr
@@ -179,9 +183,9 @@ func (c *Client) FetchIban(ctx context.Context, cardNumber string) (iban string,
 		return "", 0, "", &Error{Category: CategoryServerError, Message: fmt.Sprintf("create request failed: %v", err)}
 	}
 
-	c.mu.Lock()
+	c.mu.RLock()
 	token := c.accessToken
-	c.mu.Unlock()
+	c.mu.RUnlock()
 
 	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("Content-Type", "application/json")

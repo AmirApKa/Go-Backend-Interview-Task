@@ -1,10 +1,15 @@
 package main
 
 import (
+	"context"
+	"errors"
 	"log"
 	"log/slog"
 	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
 	"card-to-iban/internal/handler"
 	"card-to-iban/internal/repository"
@@ -41,16 +46,44 @@ func main() {
 	zarinClient := zarinhub.NewService(username, password)
 	cardHandler := handler.NewCardHandler(zarinClient, repo, logger)
 
-	http.HandleFunc("/api/v1/card-to-iban", cardHandler.CardToIban)
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/v1/card-to-iban", cardHandler.CardToIban)
 
 	port := os.Getenv("SERVER_PORT")
 	if port == "" {
 		port = "8080"
 	}
 
-	logger.Info("server starting", "port", port)
-	if err := http.ListenAndServe(":"+port, nil); err != nil {
-		logger.Error("server failed", "error", err)
-		os.Exit(1)
+	srv := &http.Server{
+		Addr:         ":" + port,
+		Handler:      mux,
+		ReadTimeout:  15 * time.Second,
+		WriteTimeout: 15 * time.Second,
+		IdleTimeout:  60 * time.Second,
+	}
+
+	// راه‌اندازی سرور در یک Goroutine جداگانه
+	go func() {
+		logger.Info("server starting", "port", port)
+		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			logger.Error("server failed to start", "error", err)
+			os.Exit(1)
+		}
+	}()
+
+	// مدیریت Graceful Shutdown جهت بستن تمیز سرور
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	<-quit
+
+	logger.Info("shutting down server gracefully...")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	if err := srv.Shutdown(ctx); err != nil {
+		logger.Error("server forced to shutdown", "error", err)
+	} else {
+		logger.Info("server stopped gracefully")
 	}
 }

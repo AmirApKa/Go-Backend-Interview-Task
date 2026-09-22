@@ -6,45 +6,47 @@ import (
 	"unicode"
 )
 
-var ErrInvalidCard = errors.New("invalid card number")
+var (
+	ErrInvalidCardFormat = errors.New("شماره کارت باید دقیقاً ۱۶ رقم باشد")
+	ErrInvalidCardDigits = errors.New("شماره کارت حاوی کاراکترهای نامعتبر است")
+	ErrInvalidCardLuhn   = errors.New("شماره کارت وارد شده معتبر نیست")
+)
 
-// NormalizeCardNumber تبدیل ارقام فارسی/عربی به انگلیسی و حذف فاصله
+// NormalizeCardNumber تبدیل ارقام فارسی/عربی به انگلیسی و حذف فاصله و خط تیره
 func NormalizeCardNumber(input string) string {
 	var builder strings.Builder
 	for _, r := range input {
+		if r == ' ' || r == '-' {
+			continue
+		}
 		switch {
-		case unicode.IsDigit(r):
-			if r >= '۰' && r <= '۹' {
-				builder.WriteRune(r - '۰' + '0')
-			} else if r >= '٠' && r <= '٩' {
-				builder.WriteRune(r - '٠' + '0')
-			} else {
-				builder.WriteRune(r)
-			}
+		case r >= '۰' && r <= '۹':
+			builder.WriteRune(r - '۰' + '0')
+		case r >= '٠' && r <= '٩':
+			builder.WriteRune(r - '٠' + '0')
+		default:
+			builder.WriteRune(r)
 		}
 	}
 	return builder.String()
 }
 
+// ValidateCard اعتبارسنجی دقیق شماره کارت
 func ValidateCard(card string) error {
-	card = NormalizeCardNumber(card)
+	normalized := NormalizeCardNumber(card)
 
-	if card == "" {
-		return ErrInvalidCard
+	if len(normalized) != 16 {
+		return ErrInvalidCardFormat
 	}
 
-	if len(card) != 16 {
-		return ErrInvalidCard
-	}
-
-	for _, r := range card {
-		if r < '0' || r > '9' {
-			return ErrInvalidCard
+	for _, r := range normalized {
+		if !unicode.IsDigit(r) {
+			return ErrInvalidCardDigits
 		}
 	}
 
-	if !luhnValid(card) {
-		return ErrInvalidCard
+	if !luhnValid(normalized) {
+		return ErrInvalidCardLuhn
 	}
 
 	return nil
@@ -71,10 +73,11 @@ func luhnValid(card string) bool {
 	return sum%10 == 0
 }
 
+// MaskCardNumber ماسک کردن ایمن شماره کارت (۶ رقم اول + ۶ ستاره + ۴ رقم آخر)
 func MaskCardNumber(card string) string {
-	card = NormalizeCardNumber(card)
-	if len(card) != 16 {
+	normalized := NormalizeCardNumber(card)
+	if len(normalized) != 16 {
 		return card
 	}
-	return card[:6] + "******" + card[12:]
+	return normalized[:6] + "******" + normalized[12:]
 }
