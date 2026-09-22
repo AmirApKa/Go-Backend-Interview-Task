@@ -78,9 +78,19 @@ func TestMaskCardNumber(t *testing.T) {
 			expected: "603799******9999",
 		},
 		{
-			name:     "Invalid Short Card Number",
+			name:     "Invalid Short Card Number (6 digits)",
 			card:     "123456",
-			expected: "123456",
+			expected: "**3456",
+		},
+		{
+			name:     "Very Short Card Number (3 digits)",
+			card:     "123",
+			expected: "***",
+		},
+		{
+			name:     "Empty Card Number",
+			card:     "",
+			expected: "",
 		},
 	}
 

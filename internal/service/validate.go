@@ -73,11 +73,23 @@ func luhnValid(card string) bool {
 	return sum%10 == 0
 }
 
-// MaskCardNumber ماسک کردن ایمن شماره کارت (۶ رقم اول + ۶ ستاره + ۴ رقم آخر)
+// MaskCardNumber ماسک کردن ایمن شماره کارت.
+// برای طول ۱۶: ۶ رقم اول + ۶ ستاره + ۴ رقم آخر.
+// برای سایر طول‌ها: همه ارقام به‌جز ۴ رقم آخر ستاره می‌شوند تا از افشای
+// تصادفی شماره کارت در audit log جلوگیری شود.
 func MaskCardNumber(card string) string {
 	normalized := NormalizeCardNumber(card)
-	if len(normalized) != 16 {
-		return card
+	n := len(normalized)
+
+	if n == 0 {
+		return ""
 	}
-	return normalized[:6] + "******" + normalized[12:]
+	if n <= 4 {
+		return strings.Repeat("*", n)
+	}
+	if n == 16 {
+		return normalized[:6] + "******" + normalized[12:]
+	}
+	// طول غیراستاندارد: فقط ۴ رقم آخر نمایش داده شود
+	return strings.Repeat("*", n-4) + normalized[n-4:]
 }
