@@ -17,6 +17,12 @@ import (
 	"card-to-iban/internal/zarinhub"
 )
 
+// ZarinhubClient اینترفیسی است که Handler به آن وابسته است، نه به Struct عینی.
+// این کار Mock کردن کلاینت را در تست‌ها ممکن می‌کند بدون نیاز به اتصال واقعی به اینترنت.
+type ZarinhubClient interface {
+	FetchIban(ctx context.Context, cardNumber string) (iban string, httpStatus int, rawBody string, err error)
+}
+
 type Request struct {
 	CardNumber string `json:"card_number"`
 }
@@ -29,12 +35,12 @@ type Response struct {
 }
 
 type CardHandler struct {
-	zarinClient *zarinhub.Client
+	zarinClient ZarinhubClient
 	repo        repository.Repository
 	logger      *slog.Logger
 }
 
-func NewCardHandler(zarinClient *zarinhub.Client, repo repository.Repository, logger *slog.Logger) *CardHandler {
+func NewCardHandler(zarinClient ZarinhubClient, repo repository.Repository, logger *slog.Logger) *CardHandler {
 	return &CardHandler{zarinClient: zarinClient, repo: repo, logger: logger}
 }
 
