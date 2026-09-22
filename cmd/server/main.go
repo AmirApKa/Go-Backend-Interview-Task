@@ -27,8 +27,10 @@ func main() {
 
 	username := os.Getenv("ZARINHUB_USERNAME")
 	password := os.Getenv("ZARINHUB_PASSWORD")
-	if username == "" || password == "" {
-		logger.Warn("ZARINHUB_USERNAME or ZARINHUB_PASSWORD is not set")
+	token := os.Getenv("ZARINHUB_TOKEN")
+
+	if token == "" && (username == "" || password == "") {
+		logger.Warn("Neither ZARINHUB_TOKEN nor (ZARINHUB_USERNAME & ZARINHUB_PASSWORD) is set")
 	}
 
 	dbPath := os.Getenv("DB_PATH")
@@ -44,6 +46,10 @@ func main() {
 	defer repo.Close()
 
 	zarinClient := zarinhub.NewService(username, password)
+	if token != "" {
+		zarinClient.SetStaticToken(token)
+	}
+
 	cardHandler := handler.NewCardHandler(zarinClient, repo, logger)
 
 	mux := http.NewServeMux()
@@ -62,7 +68,6 @@ func main() {
 		IdleTimeout:  60 * time.Second,
 	}
 
-	// راه‌اندازی سرور در یک Goroutine جداگانه
 	go func() {
 		logger.Info("server starting", "port", port)
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
@@ -71,17 +76,16 @@ func main() {
 		}
 	}()
 
-	// مدیریت Graceful Shutdown جهت بستن تمیز سرور
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
 
 	logger.Info("shutting down server gracefully...")
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer shutdownCancel()
 
-	if err := srv.Shutdown(ctx); err != nil {
+	if err := srv.Shutdown(shutdownCtx); err != nil {
 		logger.Error("server forced to shutdown", "error", err)
 	} else {
 		logger.Info("server stopped gracefully")

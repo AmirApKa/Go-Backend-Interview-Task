@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -16,9 +15,10 @@ const authURL = "https://zarin-hub.com/api/v5/Authentication/GetToken"
 const cardToIbanURL = "https://zarin-hub.com/api/v5/Kyc/CardToIban"
 
 type Client struct {
-	username   string
-	password   string
-	httpClient *http.Client
+	username    string
+	password    string
+	staticToken string
+	httpClient  *http.Client
 
 	mu           sync.RWMutex
 	accessToken  string
@@ -74,8 +74,20 @@ func NewService(username, password string) *Client {
 	}
 }
 
+func (c *Client) SetStaticToken(token string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.staticToken = token
+}
+
 func (c *Client) ensureToken(ctx context.Context) error {
-	// استفاده از Read Lock برای بررسی سریع اعتبار توکن بدون مسدودسازی سایر درخواست‌ها
+	if c.staticToken != "" {
+		c.mu.Lock()
+		c.accessToken = c.staticToken
+		c.mu.Unlock()
+		return nil
+	}
+
 	c.mu.RLock()
 	if c.accessToken != "" && time.Now().Before(c.expiresAt.Add(-1*time.Minute)) {
 		c.mu.RUnlock()
@@ -86,7 +98,6 @@ func (c *Client) ensureToken(ctx context.Context) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	// Double-check پس از دریافت Write Lock
 	if c.accessToken != "" && time.Now().Before(c.expiresAt.Add(-1*time.Minute)) {
 		return nil
 	}
@@ -155,17 +166,6 @@ func (c *Client) callAuth(ctx context.Context, body getTokenRequest) (*getTokenR
 	}
 
 	return &res, nil
-}
-
-func classifyTransportError(err error) error {
-	if errors.Is(err, context.DeadlineExceeded) {
-		return &Error{Category: CategoryTimeout, Message: err.Error()}
-	}
-	var netErr interface{ Timeout() bool }
-	if errors.As(err, &netErr) && netErr.Timeout() {
-		return &Error{Category: CategoryTimeout, Message: err.Error()}
-	}
-	return &Error{Category: CategoryUnavailable, Message: err.Error()}
 }
 
 func (c *Client) FetchIban(ctx context.Context, cardNumber string) (iban string, httpStatus int, rawBody string, err error) {

@@ -17,8 +17,6 @@ import (
 	"card-to-iban/internal/zarinhub"
 )
 
-// ZarinhubClient اینترفیسی است که Handler به آن وابسته است، نه به Struct عینی.
-// این کار Mock کردن کلاینت را در تست‌ها ممکن می‌کند بدون نیاز به اتصال واقعی به اینترنت.
 type ZarinhubClient interface {
 	FetchIban(ctx context.Context, cardNumber string) (iban string, httpStatus int, rawBody string, err error)
 }
@@ -107,6 +105,9 @@ func (h *CardHandler) CardToIban(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(Response{Success: false, Error: "روش درخواست نامعتبر است", Code: "METHOD_NOT_ALLOWED"})
 		return
 	}
+
+	r.Body = http.MaxBytesReader(w, r.Body, 1048576) // ۱ مگابایت سقف حجم ورودی
+	defer r.Body.Close()
 
 	var req Request
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {

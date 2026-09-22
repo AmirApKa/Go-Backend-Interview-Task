@@ -1,22 +1,21 @@
 package zarinhub
 
-import "fmt"
+import (
+	"context"
+	"errors"
+	"fmt"
+)
 
-// ErrorCategory یک دسته‌بندی پایدار و در سطح Application برای خطاهای فراخوانی زرین‌هاب است.
-// این دسته‌ها برای تفکیک خطای احراز هویت، رد شدن درخواست، Timeout/عدم دسترسی
-// و خطای داخلی سرویس بیرونی استفاده می‌شوند.
 type ErrorCategory string
 
 const (
-	CategoryAuth        ErrorCategory = "EXTERNAL_AUTH_ERROR"
-	CategoryRejected    ErrorCategory = "EXTERNAL_REJECTED"
-	CategoryTimeout     ErrorCategory = "EXTERNAL_TIMEOUT"
-	CategoryUnavailable ErrorCategory = "EXTERNAL_UNAVAILABLE"
-	CategoryServerError ErrorCategory = "EXTERNAL_SERVER_ERROR"
+	CategoryAuth        ErrorCategory = "AUTH"
+	CategoryRejected    ErrorCategory = "REJECTED"
+	CategoryTimeout     ErrorCategory = "TIMEOUT"
+	CategoryUnavailable ErrorCategory = "UNAVAILABLE"
+	CategoryServerError ErrorCategory = "SERVER_ERROR"
 )
 
-// Error خطای ساختاریافته‌ای است که کلاینت زرین‌هاب برمی‌گرداند.
-// Message فقط برای Log داخلی است و هرگز نباید مستقیماً به کاربر نمایش داده شود.
 type Error struct {
 	Category   ErrorCategory
 	RemoteCode string
@@ -24,24 +23,34 @@ type Error struct {
 }
 
 func (e *Error) Error() string {
-	return fmt.Sprintf("zarinhub error [%s/%s]: %s", e.Category, e.RemoteCode, e.Message)
+	if e.RemoteCode != "" {
+		return fmt.Sprintf("[%s] %s (code: %s)", e.Category, e.Message, e.RemoteCode)
+	}
+	return fmt.Sprintf("[%s] %s", e.Category, e.Message)
 }
 
-// remoteErrorTypeToCategory errorType مستندشده‌ی زرین‌هاب را
-// به دسته‌بندی داخلی ما نگاشت می‌کند.
-func remoteErrorTypeToCategory(errorType string) ErrorCategory {
-	switch errorType {
-	case "UnAuthorized":
+func remoteErrorTypeToCategory(errType string) ErrorCategory {
+	switch errType {
+	case "Unauthorized", "AuthenticationFailed":
 		return CategoryAuth
-	case "RequestTimeOut":
-		return CategoryTimeout
-	case "Unavailable":
-		return CategoryUnavailable
-	case "ServerError", "ProviderError":
-		return CategoryServerError
-	case "BadRequest", "NotFound", "LogicError":
+	case "InvalidInput", "Rejected", "NotFound":
 		return CategoryRejected
+	case "Timeout":
+		return CategoryTimeout
+	case "ServiceUnavailable":
+		return CategoryUnavailable
 	default:
 		return CategoryServerError
 	}
+}
+
+func classifyTransportError(err error) error {
+	if errors.Is(err, context.DeadlineExceeded) {
+		return &Error{Category: CategoryTimeout, Message: err.Error()}
+	}
+	var netErr interface{ Timeout() bool }
+	if errors.As(err, &netErr) && netErr.Timeout() {
+		return &Error{Category: CategoryTimeout, Message: err.Error()}
+	}
+	return &Error{Category: CategoryUnavailable, Message: err.Error()}
 }

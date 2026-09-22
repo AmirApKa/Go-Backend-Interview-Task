@@ -8,9 +8,6 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-// schema به‌صورت خودکار و در هر بار اجرای سرور اعمال می‌شود.
-// چون همهٔ دستورات IF NOT EXISTS هستند، تکرارپذیر و بی‌خطر است
-// (نیازی به ابزار Migration جداگانه مثل golang-migrate نبود).
 const schema = `
 CREATE TABLE IF NOT EXISTS audit_logs (
     id                    INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -51,10 +48,10 @@ func (r *SQLiteRepository) Close() error {
 
 func (r *SQLiteRepository) SaveAuditLog(ctx context.Context, log *AuditLog) error {
 	query := `
-		INSERT INTO audit_logs
-			(request_id, masked_card, status, external_http_status, external_response, error_message, client_ip, duration_ms)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-	`
+        INSERT INTO audit_logs
+            (request_id, masked_card, status, external_http_status, external_response, error_message, client_ip, duration_ms)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `
 	result, err := r.db.ExecContext(ctx, query,
 		log.RequestID,
 		log.MaskedCard,
